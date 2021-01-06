@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import sys
+import time
 
 import calour as ca
 import calour_utils as cu
@@ -38,7 +39,6 @@ def classifier_performance_matrix(exp: ca.Experiment, use_subset_features=True, 
     roc_mat = np.zeros([num_exp, num_exp])
 
     ids1 = []
-    ids2 = []
     for idx1, (id1,exp1) in enumerate(exp.iterate('expid')):
         if shuffle_source:
             exp1.sample_metadata['type'] = exp1.sample_metadata['type'].sample(frac=1).values
@@ -48,7 +48,6 @@ def classifier_performance_matrix(exp: ca.Experiment, use_subset_features=True, 
         if not use_subset_features:
             model=cu.classify_fit(exp1,'type')
         for idx2, (id2, exp2) in enumerate(exp.iterate('expid')):
-            ids2.append(id2)
             exp2 = exp2.filter_sum_abundance(0,strict=True)
             cexp1 = exp1.filter_ids(exp2.feature_metadata.index)
             cexp2 = exp2.filter_ids(cexp1.feature_metadata.index)
@@ -71,7 +70,7 @@ def classifier_performance_matrix(exp: ca.Experiment, use_subset_features=True, 
             roc_auc = cu.classify_get_roc(res)
             roc_mat[idx1,idx2] = roc_auc
     ca.set_log_level('INFO')
-    resdf = pd.DataFrame(roc_mat, index=ids1, columns=ids2)
+    resdf = pd.DataFrame(roc_mat, index=ids1, columns=ids1)
     return resdf
 
 
@@ -84,6 +83,7 @@ def main(argv):
     parser.add_argument('--use-subset', help="Use only subset of features present in both cohorts for classifier training", action='store_true', default=True)
     parser.add_argument('--shuffle', help="Shuffle testing labels", action='store_true', default=False)
     parser.add_argument('--shuffle-source', help="Shuffle training labels", action='store_true', default=False)
+    parser.add_argument('--uname', help="add unique signature to name", action='store_true', default=False)
 
     args = parser.parse_args(argv)
 
@@ -97,8 +97,12 @@ def main(argv):
     resdf = classifier_performance_matrix(exp=exp, use_subset_features=args.use_subset, shuffle=args.shuffle, shuffle_source=args.shuffle_source)
 
     # save the results
-    print('saving to %s' % args.output)
-    resdf.to_csv(args.output)
+    cname = args.output
+    if args.uname:
+        cname += '_'
+        cname += str(int(time.time() * 100000))
+    print('saving to %s' % cname)
+    resdf.to_csv(cname)
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
