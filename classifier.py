@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+import argparse
+import sys
+
 import calour as ca
 import calour_utils as cu
 
@@ -24,10 +28,9 @@ def classifier_performance_matrix(exp: ca.Experiment, use_subset_features=True, 
     
     Returns
     -------
-    ids1: the 'expid' field order for the prediction matrix rows
-    ids2: the 'expid' field order for the prediction matrix columns
-    roc_mat:
-        2d numpy.array. row is the training experiment, column is the testing experiment, value is the ROC
+    pandas.dataframe
+        2d numpy.array. row is the training experiment, column is the testing experiment, value is the ROC.
+        indexes and columns are the cohort ids (expid field from exp.sample_metadata)
     '''
     ca.set_log_level('ERROR')
     num_exp = len(exp.sample_metadata['expid'].unique())
@@ -68,4 +71,34 @@ def classifier_performance_matrix(exp: ca.Experiment, use_subset_features=True, 
             roc_auc = cu.classify_get_roc(res)
             roc_mat[idx1,idx2] = roc_auc
     ca.set_log_level('INFO')
-    return ids1, ids2, roc_mat
+    resdf = pd.DataFrame(roc_mat, index=ids1, columns=ids2)
+    return resdf
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description='metaanalysis cross-classifier', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-i', '--input', help='name of input biom table')
+    parser.add_argument('-m', '--map', help='name of input mapping file')
+    parser.add_argument('-o', '--output', help='name of output file')
+
+    parser.add_argument('--use-subset', help="Use only subset of features present in both cohorts for classifier training", action='store_true', default=True)
+    parser.add_argument('--shuffle', help="Shuffle testing labels", action='store_true', default=False)
+    parser.add_argument('--shuffle-source', help="Shuffle training labels", action='store_true', default=False)
+
+    args = parser.parse_args(argv)
+
+    # load the experiment
+    print('loading experiment %s' % args.input)
+    exp = ca.read_amplicon(args.input, args.map, min_reads=1000, normalize=10000)
+    print(exp)
+
+    # run the classifier
+    print('running the classifier')
+    resdf = classifier_performance_matrix(exp=exp, use_subset_features=args.use_subset, shuffle=args.shuffle, shuffle_source=args.shuffle_source)
+
+    # save the results
+    print('saving to %s' % args.output)
+    resdf.to_csv(args.output)
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
